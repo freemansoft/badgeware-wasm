@@ -23,7 +23,8 @@
   #status { color: #7f8592; min-height: 1.2em; }
 
   /* Case lights: four PWM zones (CL0..CL3) that light the case from behind.
-     Drawn as soft glows behind the screen corners; opacity = duty / 65535. */
+     Drawn as soft glows behind the screen corners; see sim_pwm_set for the
+     duty -> opacity curve. */
   #badge { position: relative; isolation: isolate; }
   #badge canvas { position: relative; z-index: 1; display: block; }
   .glow {
@@ -87,6 +88,12 @@ globalThis.backlight = (v) => { canvas.style.filter = `brightness(${Math.max(0.1
 // --- host contract: case lights ---------------------------------------------
 // machine.PWM.duty_u16() calls sim_pwm_set(gpio, freq, duty). GPIO 0..3 are the
 // case-light channels CL0..CL3; other PWM channels have no visible effect here.
+// The LEDs' light output is proportional to duty, but CSS opacity behaves like a
+// gamma-encoded (sRGB) value, so encode the duty before using it as opacity.
+// badge.caselights() already applies a 2.2 gamma to the duty, so
+// caselights(0.5) -> duty ~22% -> opacity ~50%, about half as bright as full,
+// as on the badge. The status line shows the raw duty.
+const SRGB_GAMMA = 2.2;
 const glows = [...document.querySelectorAll(".glow")];
 const lights = [0, 0, 0, 0];
 const lightsText = document.getElementById("lights");
@@ -95,7 +102,7 @@ globalThis.sim_pwm_set = (gpio, freq, duty) => {
   const v = Math.max(0, Math.min(65535, duty)) / 65535;
   if (v === lights[gpio]) return;
   lights[gpio] = v;
-  glows[gpio].style.opacity = v;
+  glows[gpio].style.opacity = Math.pow(v, 1 / SRGB_GAMMA);
   lightsText.textContent = "case lights: " +
     lights.map((l) => Math.round(l * 100) + "%").join(" ");
 };
